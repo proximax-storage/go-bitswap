@@ -2,93 +2,144 @@ package message
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
 	"io"
 
-	pb "github.com/ipfs/go-bitswap/message/pb"
-	wantlist "github.com/ipfs/go-bitswap/wantlist"
 	blocks "github.com/ipfs/go-block-format"
+	pb "github.com/proximax-storage/go-bitswap/message/pb"
 
 	ggio "github.com/gogo/protobuf/io"
-	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-cid"
 	inet "github.com/libp2p/go-libp2p-net"
+	"github.com/proximax-storage/go-bitswap/meta"
 )
 
-// TODO move message.go into the bitswap package
-// TODO move bs/msg/internal/pb to bs/internal/pb and rename pb package to bitswap_pb
+var ErrNilMessage = errors.New("nil message")
 
-type BitSwapMessage interface {
-	// Wantlist returns a slice of unique keys that represent data wanted by
-	// the sender.
-	Wantlist() []Entry
-
-	// Blocks returns a slice of unique blocks.
-	Blocks() []blocks.Block
-
-	// AddEntry adds an entry to the Wantlist.
-	AddEntry(key cid.Cid, priority int)
-
-	Cancel(key cid.Cid)
-
-	Empty() bool
-
-	// A full wantlist is an authoritative copy, a 'non-full' wantlist is a patch-set
-	Full() bool
-
-	AddBlock(blocks.Block)
-	Exportable
-
-	Loggable() map[string]interface{}
+type protoMessageWriter struct {
+	ggio.Writer
+	toProtoConverter ToProtoConverter
 }
 
-type Exportable interface {
-	ToProtoV0() *pb.Message
-	ToProtoV1() *pb.Message
-	ToNetV0(w io.Writer) error
-	ToNetV1(w io.Writer) error
-}
-
-type impl struct {
-	full     bool
-	wantlist map[cid.Cid]*Entry
-	blocks   map[cid.Cid]blocks.Block
-}
-
-func New(full bool) BitSwapMessage {
-	return newMsg(full)
-}
-
-func newMsg(full bool) *impl {
-	return &impl{
-		blocks:   make(map[cid.Cid]blocks.Block),
-		wantlist: make(map[cid.Cid]*Entry),
-		full:     full,
+func NewProtoWriter(writer io.Writer) *protoMessageWriter {
+	return &protoMessageWriter{
+		Writer:           ggio.NewDelimitedWriter(writer),
+		toProtoConverter: NewToProtoConverter(),
 	}
 }
 
-type Entry struct {
-	wantlist.Entry
-	Cancel bool
+func (ref *protoMessageWriter) WriteMessage(message BitSwapMetaMessage) error {
+	messageProto, err := ref.toProtoConverter.ToProto(message)
+	if err != nil {
+		return err
+	}
+
+	return ref.WriteMsg(messageProto)
 }
 
-func newMessageFromProto(pbm pb.Message) (BitSwapMessage, error) {
-	m := newMsg(pbm.Wantlist.Full)
-	for _, e := range pbm.Wantlist.Entries {
-		c, err := cid.Cast([]byte(e.Block))
+type protoMessageReader struct {
+	ggio.Reader
+	fromProtoConverter FromProtoConverter
+}
+
+func NewProtoReader(r io.Reader) *protoMessageReader {
+	return &protoMessageReader{
+		Reader:             ggio.NewDelimitedReader(r, inet.MessageSizeMax),
+		fromProtoConverter: NewFromProtoConverter(),
+	}
+}
+
+func (ref *protoMessageReader) ReadMessage() (BitSwapMetaMessage, error) {
+	messageProto := new(pb.Message)
+	if err := ref.ReadMsg(messageProto); err != nil {
+		return nil, err
+	}
+
+	return ref.fromProtoConverter.FromProto(messageProto)
+}
+
+type toProtoConverter struct {
+	metaConverter meta.ToProtoConverter
+}
+
+func NewToProtoConverter() *toProtoConverter {
+	return &toProtoConverter{
+		metaConverter: meta.NewToProtoConverter(),
+	}
+}
+
+func (ref *toProtoConverter) ToProto(message BitSwapMetaMessage) (*pb.Message, error) {
+	if message == nil {
+		return nil, ErrNilMessage
+	}
+
+	metaProto, err := ref.metaConverter.ToProto(message)
+	if err != nil {
+		return nil, ErrNilMessage
+	}
+
+	var (
+		wantList = message.WantList()
+		blockArr = message.Blocks()
+	)
+
+	messageProto := &pb.Message{
+		Meta:     metaProto,
+		Wantlist: &pb.Message_Wantlist{},
+	}
+
+	messageProto.Wantlist.Entries = make([]*pb.Message_Wantlist_Entry, len(wantList))
+	for idx, want := range wantList {
+		messageProto.Wantlist.Entries[idx] = &pb.Message_Wantlist_Entry{
+			Cid: want.Bytes(),
+		}
+	}
+
+	messageProto.Payload = make([]*pb.Message_Block, len(blockArr))
+	for idx, b := range blockArr {
+		messageProto.Payload[idx] = &pb.Message_Block{
+			Data:   b.RawData(),
+			Prefix: b.Cid().Prefix().Bytes(),
+		}
+	}
+
+	return messageProto, nil
+}
+
+type fromProtoConverter struct {
+	metaConverter meta.FromProtoConverter
+}
+
+func NewFromProtoConverter() *fromProtoConverter {
+	return &fromProtoConverter{
+		metaConverter: meta.NewFromProtoConverter(),
+	}
+}
+
+func (ref *fromProtoConverter) FromProto(messageProto *pb.Message) (BitSwapMetaMessage, error) {
+	if messageProto == nil {
+		return nil, ErrNilMessage
+	}
+
+	m, err := ref.metaConverter.FromProto(messageProto.Meta)
+	if err != nil {
+		return nil, err
+	}
+
+	message := &message{
+		BitSwapMeta: m,
+	}
+
+	for _, entry := range messageProto.Wantlist.Entries {
+		c, err := cid.Cast([]byte(entry.Cid))
 		if err != nil {
 			return nil, fmt.Errorf("incorrectly formatted cid in wantlist: %s", err)
 		}
-		m.addEntry(c, int(e.Priority), e.Cancel)
+
+		message.AddWantedEntry(c)
 	}
 
-	// deprecated
-	for _, d := range pbm.Blocks {
-		// CIDv0, sha256, protobuf only
-		b := blocks.NewBlock(d)
-		m.AddBlock(b)
-	}
-	//
-
-	for _, b := range pbm.GetPayload() {
+	for _, b := range messageProto.GetPayload() {
 		pref, err := cid.PrefixFromBytes(b.GetPrefix())
 		if err != nil {
 			return nil, err
@@ -104,29 +155,40 @@ func newMessageFromProto(pbm pb.Message) (BitSwapMessage, error) {
 			return nil, err
 		}
 
-		m.AddBlock(blk)
+		message.AddBlock(blk)
 	}
 
-	return m, nil
+	return message, nil
 }
 
-func (m *impl) Full() bool {
-	return m.full
+type message struct {
+	meta.BitSwapMeta
+	full     bool
+	wantList map[cid.Cid]struct{}
+	blocks   map[cid.Cid]blocks.Block
 }
 
-func (m *impl) Empty() bool {
-	return len(m.blocks) == 0 && len(m.wantlist) == 0
+func New(full bool) *message {
+	return &message{
+		BitSwapMeta: meta.NewBitSwapMeta(),
+		blocks:      make(map[cid.Cid]blocks.Block),
+		wantList:    make(map[cid.Cid]struct{}),
+		full:        full,
+	}
+}
+func (m *message) Empty() bool {
+	return len(m.blocks) == 0 && len(m.wantList) == 0
 }
 
-func (m *impl) Wantlist() []Entry {
-	out := make([]Entry, 0, len(m.wantlist))
-	for _, e := range m.wantlist {
-		out = append(out, *e)
+func (m *message) WantList() []cid.Cid {
+	out := make([]cid.Cid, 0, len(m.wantList))
+	for id := range m.wantList {
+		out = append(out, id)
 	}
 	return out
 }
 
-func (m *impl) Blocks() []blocks.Block {
+func (m *message) Blocks() []blocks.Block {
 	bs := make([]blocks.Block, 0, len(m.blocks))
 	for _, block := range m.blocks {
 		bs = append(bs, block)
@@ -134,111 +196,10 @@ func (m *impl) Blocks() []blocks.Block {
 	return bs
 }
 
-func (m *impl) Cancel(k cid.Cid) {
-	delete(m.wantlist, k)
-	m.addEntry(k, 0, true)
+func (m *message) AddWantedEntry(k cid.Cid) {
+	m.wantList[k] = struct{}{}
 }
 
-func (m *impl) AddEntry(k cid.Cid, priority int) {
-	m.addEntry(k, priority, false)
-}
-
-func (m *impl) addEntry(c cid.Cid, priority int, cancel bool) {
-	e, exists := m.wantlist[c]
-	if exists {
-		e.Priority = priority
-		e.Cancel = cancel
-	} else {
-		m.wantlist[c] = &Entry{
-			Entry: wantlist.Entry{
-				Cid:      c,
-				Priority: priority,
-			},
-			Cancel: cancel,
-		}
-	}
-}
-
-func (m *impl) AddBlock(b blocks.Block) {
+func (m *message) AddBlock(b blocks.Block) {
 	m.blocks[b.Cid()] = b
-}
-
-func FromNet(r io.Reader) (BitSwapMessage, error) {
-	pbr := ggio.NewDelimitedReader(r, inet.MessageSizeMax)
-	return FromPBReader(pbr)
-}
-
-func FromPBReader(pbr ggio.Reader) (BitSwapMessage, error) {
-	pb := new(pb.Message)
-	if err := pbr.ReadMsg(pb); err != nil {
-		return nil, err
-	}
-
-	return newMessageFromProto(*pb)
-}
-
-func (m *impl) ToProtoV0() *pb.Message {
-	pbm := new(pb.Message)
-	pbm.Wantlist.Entries = make([]pb.Message_Wantlist_Entry, 0, len(m.wantlist))
-	for _, e := range m.wantlist {
-		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, pb.Message_Wantlist_Entry{
-			Block:    e.Cid.Bytes(),
-			Priority: int32(e.Priority),
-			Cancel:   e.Cancel,
-		})
-	}
-	pbm.Wantlist.Full = m.full
-
-	blocks := m.Blocks()
-	pbm.Blocks = make([][]byte, 0, len(blocks))
-	for _, b := range blocks {
-		pbm.Blocks = append(pbm.Blocks, b.RawData())
-	}
-	return pbm
-}
-
-func (m *impl) ToProtoV1() *pb.Message {
-	pbm := new(pb.Message)
-	pbm.Wantlist.Entries = make([]pb.Message_Wantlist_Entry, 0, len(m.wantlist))
-	for _, e := range m.wantlist {
-		pbm.Wantlist.Entries = append(pbm.Wantlist.Entries, pb.Message_Wantlist_Entry{
-			Block:    e.Cid.Bytes(),
-			Priority: int32(e.Priority),
-			Cancel:   e.Cancel,
-		})
-	}
-	pbm.Wantlist.Full = m.full
-
-	blocks := m.Blocks()
-	pbm.Payload = make([]pb.Message_Block, 0, len(blocks))
-	for _, b := range blocks {
-		pbm.Payload = append(pbm.Payload, pb.Message_Block{
-			Data:   b.RawData(),
-			Prefix: b.Cid().Prefix().Bytes(),
-		})
-	}
-	return pbm
-}
-
-func (m *impl) ToNetV0(w io.Writer) error {
-	pbw := ggio.NewDelimitedWriter(w)
-
-	return pbw.WriteMsg(m.ToProtoV0())
-}
-
-func (m *impl) ToNetV1(w io.Writer) error {
-	pbw := ggio.NewDelimitedWriter(w)
-
-	return pbw.WriteMsg(m.ToProtoV1())
-}
-
-func (m *impl) Loggable() map[string]interface{} {
-	blocks := make([]string, 0, len(m.blocks))
-	for _, v := range m.blocks {
-		blocks = append(blocks, v.Cid().String())
-	}
-	return map[string]interface{}{
-		"blocks": blocks,
-		"wants":  m.Wantlist(),
-	}
 }

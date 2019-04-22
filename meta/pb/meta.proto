@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package bitswap.meta.pb;
+
+message MetaUnit {
+    string key = 1;
+    bytes value = 2;
+}
+
+message Meta {
+    repeated MetaUnit units = 1;
+}

@@ -21,7 +21,7 @@ func newAsyncMessageSender(s inet.Stream, messageWriter message.Writer, writeDea
 	}
 }
 
-func (ref *asyncMessageSender) Send(ctx context.Context, msg message.BitSwapMetaMessage) error {
+func (ref *asyncMessageSender) Send(ctx context.Context, msg message.MetaExtended) error {
 	var err error
 
 	if err = ref.s.SetWriteDeadline(ref.writeDeadlineDefiner.Define(ctx)); err != nil {

@@ -4,7 +4,7 @@ import (
 	pb "github.com/proximax-storage/go-bitswap/meta/pb"
 )
 
-func NewBitSwapMeta() BitSwapMeta {
+func New() *plainMeta {
 	m := make(plainMeta)
 	return &m
 }
@@ -24,11 +24,11 @@ func (ref *PlainUnit) Value() []byte {
 
 type plainMeta map[string][]byte
 
-func (m *plainMeta) Set(unit BitSwapMetaUnit) {
+func (m *plainMeta) Set(unit Unit) {
 	(*m)[unit.Key()] = unit.Value()
 }
 
-func (m plainMeta) Get(key string) BitSwapMetaUnit {
+func (m plainMeta) Get(key string) Unit {
 	val, ok := m[key]
 	if !ok {
 		return nil
@@ -47,12 +47,12 @@ func (m *plainMeta) Delete(key string) bool {
 	return false
 }
 
-func (m plainMeta) All() []BitSwapMetaUnit {
+func (m plainMeta) All() []Unit {
 	if len(m) == 0 {
 		return nil
 	}
 
-	units := make([]BitSwapMetaUnit, 0, len(m))
+	units := make([]Unit, 0, len(m))
 
 	for key, val := range m {
 		units = append(units, &PlainUnit{K: key, V: val})
@@ -61,27 +61,27 @@ func (m plainMeta) All() []BitSwapMetaUnit {
 	return units
 }
 
-type ToProtoConverterFn func(meta BitSwapMeta) (*pb.Meta, error)
+type ToProtoConverterFn func(meta Interface) (*pb.Meta, error)
 
-func (ref ToProtoConverterFn) ToProto(meta BitSwapMeta) (*pb.Meta, error) {
+func (ref ToProtoConverterFn) ToProto(meta Interface) (*pb.Meta, error) {
 	return ref(meta)
 }
 
-func NewToProtoConverter() ToProtoConverter {
+func NewToProtoConverter() ToProtoConverterFn {
 	return ToProtoConverterFn(toProtoMeta)
 }
 
-type FromProtoConverterFn func(metaProto *pb.Meta) (BitSwapMeta, error)
+type FromProtoConverterFn func(metaProto *pb.Meta) (Interface, error)
 
-func (ref FromProtoConverterFn) FromProto(metaProto *pb.Meta) (BitSwapMeta, error) {
+func (ref FromProtoConverterFn) FromProto(metaProto *pb.Meta) (Interface, error) {
 	return ref(metaProto)
 }
 
-func NewFromProtoConverter() FromProtoConverter {
+func NewFromProtoConverter() FromProtoConverterFn {
 	return FromProtoConverterFn(fromProtoMeta)
 }
 
-func toProtoMeta(meta BitSwapMeta) (*pb.Meta, error) {
+func toProtoMeta(meta Interface) (*pb.Meta, error) {
 	if meta == nil {
 		return nil, ErrNilMeta
 	}
@@ -102,12 +102,12 @@ func toProtoMeta(meta BitSwapMeta) (*pb.Meta, error) {
 	return protoMeta, nil
 }
 
-func fromProtoMeta(metaProto *pb.Meta) (BitSwapMeta, error) {
+func fromProtoMeta(metaProto *pb.Meta) (Interface, error) {
 	if metaProto == nil {
 		return nil, ErrNilMeta
 	}
 
-	meta := NewBitSwapMeta()
+	meta := New()
 
 	for _, unit := range metaProto.Units {
 		meta.Set(&PlainUnit{

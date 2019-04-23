@@ -7,7 +7,7 @@ import (
 	"github.com/proximax-storage/go-bitswap/meta"
 )
 
-type BitSwapMessage interface {
+type Interface interface {
 	// WantList returns a slice of unique keys that represent data wanted by
 	// the sender.
 	WantList() []cid.Cid
@@ -18,28 +18,26 @@ type BitSwapMessage interface {
 	// AddWantedEntry adds an entry to the WantList.
 	AddWantedEntry(cid.Cid)
 
-	Empty() bool
-
 	AddBlock(blocks.Block)
 }
 
-type BitSwapMetaMessage interface {
-	BitSwapMessage
-	meta.BitSwapMeta
+type MetaExtended interface {
+	Interface
+	meta.Interface
 }
 
 type ToProtoConverter interface {
-	ToProto(message BitSwapMetaMessage) (*pb.Message, error)
+	ToProto(message MetaExtended) (*pb.Message, error)
 }
 
 type FromProtoConverter interface {
-	FromProto(messageProto *pb.Message) (BitSwapMetaMessage, error)
+	FromProto(messageProto *pb.Message) (MetaExtended, error)
 }
 
 type Writer interface {
-	WriteMessage(message BitSwapMetaMessage) error
+	WriteMessage(message MetaExtended) error
 }
 
 type Reader interface {
-	ReadMessage() (BitSwapMetaMessage, error)
+	ReadMessage() (MetaExtended, error)
 }

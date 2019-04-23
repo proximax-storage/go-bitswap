@@ -11,25 +11,25 @@ import (
 )
 
 type BlockExchange interface {
-	SendMessage(context.Context, peer.ID, message.BitSwapMetaMessage) error
+	SendMessage(context.Context, peer.ID, message.MetaExtended) error
 
 	HandleNewStream(inet.Stream)
 }
 
 type MessageSender interface {
-	Send(context.Context, message.BitSwapMetaMessage) error
+	Send(context.Context, message.MetaExtended) error
 }
 
 type MessageReceiver interface {
-	Receive(context.Context, peer.ID, message.BitSwapMetaMessage)
+	Receive(context.Context, peer.ID, message.MetaExtended)
 }
 
 type MessageReplier interface {
-	Reply(context.Context, peer.ID, message.BitSwapMetaMessage) reply.BitSwapMetaReply
+	Reply(context.Context, peer.ID, message.MetaExtended) reply.Interface
 }
 
 type ReplyReceiver interface {
-	Receive(peer.ID, reply.BitSwapMetaReply)
+	Receive(peer.ID, reply.Interface)
 }
 
 type ErrorHandler interface {

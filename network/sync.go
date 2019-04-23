@@ -31,7 +31,7 @@ func newSyncSender(
 	}
 }
 
-func (ref *syncSender) Send(ctx context.Context, message message.BitSwapMetaMessage) error {
+func (ref *syncSender) Send(ctx context.Context, message message.MetaExtended) error {
 	var err error
 
 	if err = ref.asyncMessageSender.Send(ctx, message); err != nil {
@@ -106,7 +106,7 @@ type syncMessageReceiver struct {
 	errHandler ErrorHandler
 }
 
-func (ref *syncMessageReceiver) Receive(ctx context.Context, peerId peer.ID, message message.BitSwapMetaMessage) {
+func (ref *syncMessageReceiver) Receive(ctx context.Context, peerId peer.ID, message message.MetaExtended) {
 	r := ref.messageReplier.Reply(ctx, peerId, message)
 
 	if err := ref.s.SetWriteDeadline(ref.deadlineDefiner.Define(ctx)); err != nil {

@@ -16,19 +16,19 @@ import (
 
 var ErrNilMessage = errors.New("nil message")
 
-type protoMessageWriter struct {
+type protoWriter struct {
 	ggio.Writer
 	toProtoConverter ToProtoConverter
 }
 
-func NewProtoWriter(writer io.Writer) *protoMessageWriter {
-	return &protoMessageWriter{
+func NewProtoWriter(writer io.Writer) *protoWriter {
+	return &protoWriter{
 		Writer:           ggio.NewDelimitedWriter(writer),
 		toProtoConverter: NewToProtoConverter(),
 	}
 }
 
-func (ref *protoMessageWriter) WriteMessage(message BitSwapMetaMessage) error {
+func (ref *protoWriter) WriteMessage(message MetaExtended) error {
 	messageProto, err := ref.toProtoConverter.ToProto(message)
 	if err != nil {
 		return err
@@ -37,19 +37,19 @@ func (ref *protoMessageWriter) WriteMessage(message BitSwapMetaMessage) error {
 	return ref.WriteMsg(messageProto)
 }
 
-type protoMessageReader struct {
+type protoReader struct {
 	ggio.Reader
 	fromProtoConverter FromProtoConverter
 }
 
-func NewProtoReader(r io.Reader) *protoMessageReader {
-	return &protoMessageReader{
+func NewProtoReader(r io.Reader) *protoReader {
+	return &protoReader{
 		Reader:             ggio.NewDelimitedReader(r, inet.MessageSizeMax),
 		fromProtoConverter: NewFromProtoConverter(),
 	}
 }
 
-func (ref *protoMessageReader) ReadMessage() (BitSwapMetaMessage, error) {
+func (ref *protoReader) ReadMessage() (MetaExtended, error) {
 	messageProto := new(pb.Message)
 	if err := ref.ReadMsg(messageProto); err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func NewToProtoConverter() *toProtoConverter {
 	}
 }
 
-func (ref *toProtoConverter) ToProto(message BitSwapMetaMessage) (*pb.Message, error) {
+func (ref *toProtoConverter) ToProto(message MetaExtended) (*pb.Message, error) {
 	if message == nil {
 		return nil, ErrNilMessage
 	}
@@ -116,7 +116,7 @@ func NewFromProtoConverter() *fromProtoConverter {
 	}
 }
 
-func (ref *fromProtoConverter) FromProto(messageProto *pb.Message) (BitSwapMetaMessage, error) {
+func (ref *fromProtoConverter) FromProto(messageProto *pb.Message) (MetaExtended, error) {
 	if messageProto == nil {
 		return nil, ErrNilMessage
 	}
@@ -127,7 +127,7 @@ func (ref *fromProtoConverter) FromProto(messageProto *pb.Message) (BitSwapMetaM
 	}
 
 	message := &message{
-		BitSwapMeta: m,
+		Interface: m,
 	}
 
 	for _, entry := range messageProto.Wantlist.Entries {
@@ -162,18 +162,17 @@ func (ref *fromProtoConverter) FromProto(messageProto *pb.Message) (BitSwapMetaM
 }
 
 type message struct {
-	meta.BitSwapMeta
+	meta.Interface
 	full     bool
 	wantList map[cid.Cid]struct{}
 	blocks   map[cid.Cid]blocks.Block
 }
 
-func New(full bool) *message {
+func New() *message {
 	return &message{
-		BitSwapMeta: meta.NewBitSwapMeta(),
-		blocks:      make(map[cid.Cid]blocks.Block),
-		wantList:    make(map[cid.Cid]struct{}),
-		full:        full,
+		Interface: meta.New(),
+		blocks:    make(map[cid.Cid]blocks.Block),
+		wantList:  make(map[cid.Cid]struct{}),
 	}
 }
 func (m *message) Empty() bool {

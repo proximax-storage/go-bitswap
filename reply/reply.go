@@ -16,14 +16,14 @@ type protoWriter struct {
 	toProtoConverter ToProtoConverter
 }
 
-func NewProtoWriter(w io.Writer) Writer {
+func NewProtoWriter(w io.Writer) *protoWriter {
 	return &protoWriter{
 		Writer:           ggio.NewDelimitedWriter(w),
 		toProtoConverter: NewToProtoConverter(),
 	}
 }
 
-func (ref *protoWriter) WriteReply(reply BitSwapMetaReply) error {
+func (ref *protoWriter) WriteReply(reply Interface) error {
 	replyProto, err := ref.toProtoConverter.ToProto(reply)
 	if err != nil {
 		return err
@@ -37,14 +37,14 @@ type protoReader struct {
 	fromProtoConverter FromProtoConverter
 }
 
-func NewProtoReader(r io.Reader) Reader {
+func NewProtoReader(r io.Reader) *protoReader {
 	return &protoReader{
 		Reader:             ggio.NewDelimitedReader(r, inet.MessageSizeMax),
 		fromProtoConverter: NewFromProtoConverter(),
 	}
 }
 
-func (ref *protoReader) ReadReply() (BitSwapMetaReply, error) {
+func (ref *protoReader) ReadReply() (Interface, error) {
 	replyProto := new(pb.Reply)
 
 	if err := ref.ReadMsg(replyProto); err != nil {
@@ -63,13 +63,13 @@ type toProtoConverter struct {
 	metaConverter meta.ToProtoConverter
 }
 
-func NewToProtoConverter() ToProtoConverter {
+func NewToProtoConverter() *toProtoConverter {
 	return &toProtoConverter{
 		metaConverter: meta.NewToProtoConverter(),
 	}
 }
 
-func (ref *toProtoConverter) ToProto(reply BitSwapMetaReply) (*pb.Reply, error) {
+func (ref *toProtoConverter) ToProto(reply Interface) (*pb.Reply, error) {
 	if reply == nil {
 		return nil, ErrNilReply
 	}
@@ -88,13 +88,13 @@ type fromProtoConverter struct {
 	metaConverter meta.FromProtoConverter
 }
 
-func NewFromProtoConverter() FromProtoConverter {
+func NewFromProtoConverter() *fromProtoConverter {
 	return &fromProtoConverter{
 		metaConverter: meta.NewFromProtoConverter(),
 	}
 }
 
-func (ref *fromProtoConverter) FromProto(replyProto *pb.Reply) (BitSwapMetaReply, error) {
+func (ref *fromProtoConverter) FromProto(replyProto *pb.Reply) (Interface, error) {
 	if replyProto == nil {
 		return nil, ErrNilReply
 	}
@@ -105,16 +105,16 @@ func (ref *fromProtoConverter) FromProto(replyProto *pb.Reply) (BitSwapMetaReply
 	}
 
 	return &reply{
-		BitSwapMeta: m,
+		Interface: m,
 	}, nil
 }
 
 type reply struct {
-	meta.BitSwapMeta
+	meta.Interface
 }
 
-func NewBitSwapMetaReply() BitSwapMetaReply {
+func New() *reply {
 	return &reply{
-		BitSwapMeta: meta.NewBitSwapMeta(),
+		Interface: meta.New(),
 	}
 }

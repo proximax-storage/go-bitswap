@@ -5,22 +5,22 @@ import (
 	pb "github.com/proximax-storage/go-bitswap/reply/pb"
 )
 
-type BitSwapMetaReply interface {
-	meta.BitSwapMeta
+type Interface interface {
+	meta.Interface
 }
 
 type ToProtoConverter interface {
-	ToProto(reply BitSwapMetaReply) (*pb.Reply, error)
+	ToProto(reply Interface) (*pb.Reply, error)
 }
 
 type FromProtoConverter interface {
-	FromProto(reply *pb.Reply) (BitSwapMetaReply, error)
+	FromProto(reply *pb.Reply) (Interface, error)
 }
 
 type Writer interface {
-	WriteReply(reply BitSwapMetaReply) error
+	WriteReply(reply Interface) error
 }
 
 type Reader interface {
-	ReadReply() (BitSwapMetaReply, error)
+	ReadReply() (Interface, error)
 }

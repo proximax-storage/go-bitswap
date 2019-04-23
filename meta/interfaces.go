@@ -7,22 +7,22 @@ import (
 
 var ErrNilMeta = errors.New("nil meta")
 
-type BitSwapMetaUnit interface {
+type Unit interface {
 	Key() string
 	Value() []byte
 }
 
-type BitSwapMeta interface {
-	Set(BitSwapMetaUnit)
-	Get(key string) BitSwapMetaUnit
+type Interface interface {
+	Set(Unit)
+	Get(key string) Unit
 	Delete(key string) bool
-	All() []BitSwapMetaUnit
+	All() []Unit
 }
 
 type ToProtoConverter interface {
-	ToProto(meta BitSwapMeta) (*pb.Meta, error)
+	ToProto(meta Interface) (*pb.Meta, error)
 }
 
 type FromProtoConverter interface {
-	FromProto(metaProto *pb.Meta) (BitSwapMeta, error)
+	FromProto(metaProto *pb.Meta) (Interface, error)
 }

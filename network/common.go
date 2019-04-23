@@ -12,7 +12,6 @@ import (
 	host "github.com/libp2p/go-libp2p-host"
 	inet "github.com/libp2p/go-libp2p-net"
 	peer "github.com/libp2p/go-libp2p-peer"
-	routing "github.com/libp2p/go-libp2p-routing"
 )
 
 var writeMessageTimeout = 30 * time.Second
@@ -163,8 +162,7 @@ func newNetwork(host host.Host, msgReceiverFactory MessageReceiverFactory, proto
 }
 
 type impl struct {
-	host    host.Host
-	routing routing.ContentRouting
+	host host.Host
 
 	msgSenderFactory   MessageSenderFactory
 	msgReaderFactory   MessageReaderFactory
@@ -175,7 +173,7 @@ type impl struct {
 	protocols []protocol.ID
 }
 
-func (ref *impl) SendMessage(ctx context.Context, p peer.ID, outgoing bsmsg.BitSwapMetaMessage) error {
+func (ref *impl) SendMessage(ctx context.Context, p peer.ID, outgoing bsmsg.MetaExtended) error {
 	s, err := ref.host.NewStream(ctx, p, ref.protocols...)
 	if err != nil {
 		return err
